@@ -65,7 +65,7 @@
   ];
 
   function navigateToSection(sectionId: string) {
-    goto(`/dashboard/settings/${sectionId}`);
+    goto(`/settings/${sectionId}`);
   }
 </script>
 
