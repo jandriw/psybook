@@ -1,3 +1,4 @@
+<!-- src/routes/dashboard/+page.svelte -->
 <script lang="ts">
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
   import StatsCard from '$lib/components/dashboard/StatsCard.svelte';
