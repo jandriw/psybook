@@ -1,4 +1,4 @@
-<!-- src/lib/components/analytics/SeasonalTrends.svelte -->
+<!-- src/lib/components/dashboard/SeasonalTrends.svelte -->
 <script lang="ts">
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';

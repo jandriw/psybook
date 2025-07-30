@@ -1,4 +1,4 @@
-<!-- src/lib/components/analytics/ClientAnalytics.svelte -->
+<!-- src/lib/components/dashboard/ClientAnalytics.svelte -->
 <script lang="ts">
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
   import { Progress } from '$lib/components/ui/progress';

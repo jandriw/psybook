@@ -1,4 +1,4 @@
-<!-- src/lib/components/analytics/PerformanceKPIs.svelte -->
+<!-- src/lib/components/dashboard/PerformanceKPIs.svelte -->
 <script lang="ts">
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
