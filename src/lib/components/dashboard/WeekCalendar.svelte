@@ -1,3 +1,4 @@
+<!-- src/lib/components/dashboard/WeekCalendar.svelte -->
 <script lang="ts">
   import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
@@ -42,11 +43,11 @@
     onSlotClick = () => {},
     onBlockSlot = () => {}
   }: {
-    appointments: Appointment[];
-    blocks: TimeBlock[];
-    onAppointmentClick: (appointment: Appointment) => void;
-    onSlotClick: (date: string, time: string) => void;
-    onBlockSlot: (date: string, startTime: string, endTime: string) => void;
+    appointments?: Appointment[];
+    blocks?: TimeBlock[];
+    onAppointmentClick?: (appointment: Appointment) => void;
+    onSlotClick?: (date: string, time: string) => void;
+    onBlockSlot?: (date: string, startTime: string, endTime: string) => void;
   } = $props();
 
   // Estado de la semana actual
@@ -86,6 +87,20 @@
       return blockDate >= weekStart && blockDate <= weekEnd;
     })
   );
+
+  // ✅ DEBUG: Log para verificar que los datos están llegando
+  $effect(() => {
+    console.log('📅 Calendar Debug Info:');
+    console.log('Current week:', currentWeek.toISOString().split('T')[0]);
+    console.log('Total appointments passed:', appointments.length);
+    console.log('Week appointments:', weekAppointments.length);
+    console.log('Total blocks passed:', blocks.length);
+    console.log('Week blocks:', weekBlocks.length);
+    console.log('Week days:', weekDays.map(d => d.toISOString().split('T')[0]));
+    if (weekAppointments.length > 0) {
+      console.log('Sample appointment:', weekAppointments[0]);
+    }
+  });
 
   // Funciones de navegación
   function getStartOfWeek(date: Date): Date {
@@ -274,104 +289,89 @@
     </div>
   </CardHeader>
   
-  <CardContent class="p-0">
-    <!-- Container principal del calendario -->
-    <div class="calendar-wrapper">
-      
-      <!-- Header fijo del calendario CON ESPACIO RESERVADO PARA SCROLLBAR -->
-      <div class="calendar-header-fixed">
-        <!-- Columna de horas del header -->
-        <div class="header-time-column">
-          <div class="text-xs font-medium text-gray-600 text-center">Hora</div>
+  <CardContent class="p-4">
+    <!-- ✅ ESTRUCTURA SIMPLE QUE FUNCIONA (basada en CalendarDebugSimple) -->
+    
+    <!-- Header de días -->
+    <div class="grid grid-cols-8 gap-1 mb-4">
+      <div class="p-2 text-xs font-medium text-gray-600 bg-gray-50">Hora</div>
+      {#each weekDays as day, index}
+        <div class="p-2 text-xs font-medium text-center {isToday(day) ? 'bg-blue-50' : 'bg-gray-50'}">
+          <div>{daysOfWeek[index]}</div>
+          <div class="font-semibold {isToday(day) ? 'text-blue-600' : 'text-gray-900'}">
+            {formatDate(day)}
+          </div>
         </div>
-        
-        <!-- Columnas de días del header -->
-        <div class="header-days-grid">
-          {#each weekDays as day, index}
-            <div class="header-day-cell {isToday(day) ? 'bg-blue-50' : 'bg-gray-50'}">
-              <div class="text-xs font-medium text-gray-600">{daysOfWeek[index]}</div>
-              <div class="text-sm font-semibold {isToday(day) ? 'text-blue-600' : 'text-gray-900'}">
-                {formatDate(day)}
-              </div>
-            </div>
-          {/each}
-        </div>
-        
-        <!-- ESPACIO RESERVADO PARA SCROLLBAR (mismo ancho que el scrollbar) -->
-        <div class="scrollbar-spacer"></div>
-      </div>
+      {/each}
+    </div>
 
-      <!-- Container con scroll normal -->
-      <div class="calendar-scroll-wrapper">
-        <!-- Contenido scrollable -->
-        <div class="calendar-content">
-          {#each timeSlots as time}
-            <div class="calendar-time-row">
-              <!-- Columna de hora -->
-              <div class="time-column-cell">
-                <span class="text-xs text-gray-600 font-mono">{time}</span>
-              </div>
+    <!-- Grid del calendario con scroll -->
+    <div class="max-h-96 overflow-y-auto border border-gray-200 rounded">
+      <div class="space-y-0">
+        {#each timeSlots as time}
+          <div class="grid grid-cols-8 gap-0 border-b border-gray-100">
+            <!-- Columna de tiempo -->
+            <div class="p-2 text-xs text-gray-600 bg-gray-50 border-r border-gray-200 font-mono">
+              {time}
+            </div>
+            
+            <!-- Columnas de días -->
+            {#each weekDays as day}
+              {@const appointment = getAppointmentAt(day, time)}
+              {@const block = getBlockAt(day, time)}
+              {@const isAvailable = isSlotAvailable(day, time)}
               
-              <!-- Grid de días -->
-              <div class="days-grid">
-                {#each weekDays as day, dayIndex}
-                  {@const appointment = getAppointmentAt(day, time)}
-                  {@const block = getBlockAt(day, time)}
-                  {@const isAvailable = isSlotAvailable(day, time)}
-                  
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div 
+                class="p-1 min-h-12 border-r border-gray-200 relative cursor-pointer hover:bg-gray-50 {isToday(day) ? 'bg-blue-25' : ''}"
+                onclick={() => handleSlotClick(day, time)}
+                oncontextmenu={(e) => {
+                  e.preventDefault();
+                  if (isAvailable) handleQuickBlock(day, time);
+                }}
+              >
+                {#if appointment && isAppointmentStart(appointment, time)}
+                  <!-- Appointment Card -->
                   <div 
-                    class="day-slot {isToday(day) ? 'bg-blue-25' : ''}"
-                    onclick={() => handleSlotClick(day, time)}
-                    oncontextmenu={(e) => {
-                      e.preventDefault();
-                      if (isAvailable) handleQuickBlock(day, time);
-                    }}
+                    class="absolute inset-1 {getAppointmentColor(appointment.status)} rounded p-1 text-xs border z-10"
+                    style="height: {getAppointmentDuration(appointment) * 3}rem;"
                   >
-                    {#if appointment && isAppointmentStart(appointment, time)}
-                      <!-- Appointment Card -->
-                      <div 
-                        class="slot-card {getAppointmentColor(appointment.status)}"
-                        style="height: {getAppointmentDuration(appointment) * 3}rem;"
-                      >
-                        <div class="font-medium truncate">{appointment.clientName}</div>
-                        <div class="text-xs opacity-75 truncate">{appointment.service}</div>
-                        <div class="flex items-center justify-between mt-1">
-                          <span class="text-xs">{appointment.price}€</span>
-                          {#if appointment.hasVideo}
-                            <Video class="h-3 w-3" />
-                          {/if}
-                        </div>
-                      </div>
-                      
-                    {:else if block && isBlockStart(block, time)}
-                      <!-- Block Card -->
-                      <div 
-                        class="slot-card {getBlockColor(block.type)}"
-                        style="height: {getBlockDuration(block) * 3}rem;"
-                      >
-                        <div class="font-medium truncate flex items-center">
-                          <Ban class="h-3 w-3 mr-1" />
-                          {block.title}
-                        </div>
-                        {#if block.reason}
-                          <div class="text-xs opacity-75 truncate">{block.reason}</div>
-                        {/if}
-                      </div>
-                      
-                    {:else if isAvailable}
-                      <!-- Slot libre -->
-                      <div class="free-slot-indicator">
-                        <Plus class="h-3 w-3 text-gray-400" />
-                      </div>
+                    <div class="font-medium truncate">{appointment.clientName}</div>
+                    <div class="text-xs opacity-75 truncate">{appointment.service}</div>
+                    <div class="flex items-center justify-between mt-1">
+                      <span class="text-xs">{appointment.price}€</span>
+                      {#if appointment.hasVideo}
+                        <Video class="h-3 w-3" />
+                      {/if}
+                    </div>
+                  </div>
+                  
+                {:else if block && isBlockStart(block, time)}
+                  <!-- Block Card -->
+                  <div 
+                    class="absolute inset-1 {getBlockColor(block.type)} rounded p-1 text-xs border z-10"
+                    style="height: {getBlockDuration(block) * 3}rem;"
+                  >
+                    <div class="font-medium truncate flex items-center">
+                      <Ban class="h-3 w-3 mr-1" />
+                      {block.title}
+                    </div>
+                    {#if block.reason}
+                      <div class="text-xs opacity-75 truncate">{block.reason}</div>
                     {/if}
                   </div>
-                {/each}
+                  
+                {:else if isAvailable}
+                  <!-- Slot libre -->
+                  <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                    <Plus class="h-3 w-3 text-gray-400" />
+                  </div>
+                {/if}
               </div>
-            </div>
-          {/each}
-        </div>
+            {/each}
+          </div>
+        {/each}
       </div>
     </div>
   </CardContent>
@@ -391,7 +391,7 @@
     <div class="w-3 h-3 bg-green-100 border border-green-200 rounded"></div>
     <span>Completada</span>
   </div>
-  <div class="flex items-container space-x-2">
+  <div class="flex items-center space-x-2">
     <div class="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
     <span>Bloqueado</span>
   </div>
@@ -405,192 +405,3 @@
 <div class="mt-2 text-xs text-gray-500">
   Click izquierdo: Ver/Crear cita • Click derecho: Bloquear slot • Navega entre semanas con las flechas
 </div>
-
-<style>
-  /* SOLUCIÓN DEFINITIVA: Reservar espacio para scrollbar */
-  .calendar-wrapper {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  /* Header con espacio reservado para scrollbar */
-  .calendar-header-fixed {
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-    display: flex;
-    width: 100%;
-  }
-
-  .header-time-column {
-    width: 80px;
-    flex-shrink: 0;
-    border-right: 1px solid #e5e7eb;
-    background-color: #f9fafb;
-    padding: 8px 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .header-days-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-  }
-
-  .header-day-cell {
-    border-right: 1px solid #e5e7eb;
-    padding: 8px 4px;
-    text-align: center;
-  }
-
-  .header-day-cell:last-child {
-    border-right: none;
-  }
-
-  /* CLAVE: Espaciador que ocupa exactamente el mismo espacio que el scrollbar */
-  .scrollbar-spacer {
-    width: 15px; /* Ancho típico de scrollbar en la mayoría de navegadores */
-    flex-shrink: 0;
-    background-color: #f9fafb; /* Mismo color que la columna de tiempo */
-    border-left: 1px solid #e5e7eb;
-  }
-
-  /* Container de scroll NORMAL (sin trucos) */
-  .calendar-scroll-wrapper {
-    position: relative;
-    max-height: 384px;
-    overflow-y: auto; /* Scroll normal */
-    overflow-x: hidden;
-  }
-
-  /* Filas del calendario */
-  .calendar-time-row {
-    display: flex;
-    border-bottom: 1px solid #f3f4f6;
-    min-height: 48px;
-    width: 100%;
-  }
-
-  .time-column-cell {
-    width: 80px; /* Exactamente igual al header */
-    flex-shrink: 0;
-    border-right: 1px solid #e5e7eb;
-    background-color: #f9fafb;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .days-grid {
-    flex: 1; /* Ocupa exactamente el mismo espacio que el header */
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-  }
-
-  .day-slot {
-    border-right: 1px solid #e5e7eb;
-    padding: 4px;
-    position: relative;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 48px;
-  }
-
-  .day-slot:last-child {
-    border-right: none;
-  }
-
-  .day-slot:hover {
-    background-color: #f9fafb;
-  }
-
-  /* Cards dentro de los slots */
-  .slot-card {
-    position: absolute;
-    inset: 4px;
-    border-radius: 6px;
-    padding: 4px;
-    font-size: 12px;
-    border-width: 1px;
-    z-index: 10;
-  }
-
-  .free-slot-indicator {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-
-  .day-slot:hover .free-slot-indicator {
-    opacity: 1;
-  }
-
-  /* Scrollbar personalizada (opcional para mejor apariencia) */
-  .calendar-scroll-wrapper::-webkit-scrollbar {
-    width: 17px; /* Mismo ancho que el espaciador */
-  }
-
-  .calendar-scroll-wrapper::-webkit-scrollbar-track {
-    background: #f9fafb;
-    border-left: 1px solid #e5e7eb;
-  }
-
-  .calendar-scroll-wrapper::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 8px;
-    border: 3px solid #f9fafb;
-  }
-
-  .calendar-scroll-wrapper::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-  }
-
-  /* Para Firefox */
-  .calendar-scroll-wrapper {
-    scrollbar-width: auto; /* Scrollbar normal */
-    scrollbar-color: #cbd5e1 #f9fafb;
-  }
-
-  /* Responsive */
-  @media (max-width: 768px) {
-    .header-time-column,
-    .time-column-cell {
-      width: 60px;
-    }
-    
-    .scrollbar-spacer {
-      width: 17px; /* Mantener el mismo ancho en móvil */
-    }
-    
-    .header-time-column,
-    .time-column-cell {
-      font-size: 10px;
-    }
-  }
-
-  /* Ajuste fino para diferentes navegadores */
-  @supports (-webkit-appearance: none) {
-    /* Chrome/Safari: scrollbar ya definido arriba */
-  }
-
-  @-moz-document url-prefix() {
-    /* Firefox: podría necesitar ajuste del ancho del spacer */
-    .scrollbar-spacer {
-      width: 17px;
-    }
-  }
-</style>

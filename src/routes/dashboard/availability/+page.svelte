@@ -1,3 +1,4 @@
+<!-- svelte-ignore state_referenced_locally -->
 <!--src/routes/dashboard/availability/+page.svelte-->
 <script lang="ts">
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
@@ -61,118 +62,268 @@
 
   let { data } = $props();
 
-  // Estado de la página
+  // ✅ FUNCIONES AUXILIARES
+  function getStartOfWeek(date: Date): Date {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+  }
+
+  function parseTime(timeStr: string): number {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+    return date.getTime();
+  }
+
+  function formatTime(date: Date): string {
+    return date.toTimeString().slice(0, 5);
+  }
+
+  // ✅ FUNCIÓN PARA GENERAR CITAS INTELIGENTES
+  function generateSmartAppointments(): Appointment[] {
+    const appointments: Appointment[] = [];
+    const today = new Date();
+    const currentWeekStart = getStartOfWeek(today);
+    
+    const clientNames = [
+      'María García López', 'Carlos Ruiz Martín', 'Ana Sánchez Pérez',
+      'Luis Fernández Gómez', 'Carmen Rodríguez Vila', 'Miguel Torres Ruiz',
+      'Laura Martínez Santos', 'Pablo Jiménez Moreno', 'Isabel López García',
+      'David Herrera Blanco', 'Cristina Vega Rubio', 'Alejandro Díaz Cruz',
+      'Patricia Morales Ortiz', 'Roberto Castillo Ramos', 'Elena Guerrero Soto'
+    ];
+
+    const services = [
+      { name: 'Terapia individual', price: 60, duration: 50 },
+      { name: 'Primera consulta', price: 45, duration: 45 },
+      { name: 'Terapia de pareja', price: 75, duration: 60 },
+      { name: 'Seguimiento', price: 50, duration: 30 },
+      { name: 'Sesión intensiva', price: 90, duration: 90 }
+    ];
+
+    // Generar para 3 semanas (pasada, actual, siguiente)
+    for (let weekOffset = -1; weekOffset <= 1; weekOffset++) {
+      const weekStart = new Date(currentWeekStart);
+      weekStart.setDate(weekStart.getDate() + (weekOffset * 7));
+
+      const appointmentsThisWeek = Math.floor(Math.random() * 5) + 8; // 8-12 citas
+      
+      for (let i = 0; i < appointmentsThisWeek; i++) {
+        const dayOffset = Math.random() < 0.8 ? 
+          Math.floor(Math.random() * 5) : // 80% lunes-viernes
+          Math.floor(Math.random() * 7);   // 20% cualquier día
+
+        const appointmentDate = new Date(weekStart);
+        appointmentDate.setDate(appointmentDate.getDate() + dayOffset);
+        
+        const possibleHours = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'];
+        const startTime = possibleHours[Math.floor(Math.random() * possibleHours.length)];
+        
+        const service = services[Math.floor(Math.random() * services.length)];
+        const startMinutes = parseTime(startTime);
+        const endTime = formatTime(new Date(startMinutes + service.duration * 60000));
+
+        let status: 'confirmed' | 'pending' | 'completed' | 'cancelled';
+        if (weekOffset === -1) {
+          status = Math.random() < 0.85 ? 'completed' : 'cancelled';
+        } else if (weekOffset === 0) {
+          if (appointmentDate < today) {
+            status = Math.random() < 0.9 ? 'completed' : 'cancelled';
+          } else {
+            status = Math.random() < 0.9 ? 'confirmed' : 'pending';
+          }
+        } else {
+          status = Math.random() < 0.7 ? 'confirmed' : 'pending';
+        }
+
+        appointments.push({
+          id: `smart-${weekOffset}-${i}`,
+          clientName: clientNames[Math.floor(Math.random() * clientNames.length)],
+          service: service.name,
+          startTime,
+          endTime,
+          date: appointmentDate.toISOString().split('T')[0],
+          status,
+          price: service.price,
+          hasVideo: Math.random() < 0.8
+        });
+      }
+    }
+
+    return appointments;
+  }
+
+  // ✅ FUNCIÓN PARA GENERAR BLOQUEOS INTELIGENTES
+  function generateSmartBlocks(): TimeBlock[] {
+    const blocks: TimeBlock[] = [];
+    const currentWeekStart = getStartOfWeek(new Date());
+
+    for (let weekOffset = -1; weekOffset <= 1; weekOffset++) {
+      const weekStart = new Date(currentWeekStart);
+      weekStart.setDate(weekStart.getDate() + (weekOffset * 7));
+
+      const blockTemplates = [
+        { title: 'Almuerzo', time: '13:00-14:00', type: 'personal', reason: 'Pausa para almorzar', frequency: 0.6 },
+        { title: 'Formación continua', time: '12:00-13:00', type: 'personal', reason: 'Curso online', frequency: 0.2 },
+        { title: 'Administración', time: '18:00-19:00', type: 'blocked', reason: 'Tareas administrativas', frequency: 0.3 },
+        { title: 'Tiempo personal', time: '16:00-17:00', type: 'personal', reason: 'Descanso personal', frequency: 0.1 },
+        { title: 'Reunión', time: '11:00-12:00', type: 'blocked', reason: 'Reunión con supervisor', frequency: 0.15 }
+      ];
+
+      blockTemplates.forEach((template, index) => {
+        if (Math.random() < template.frequency) {
+          const dayOffset = Math.floor(Math.random() * 5);
+          const blockDate = new Date(weekStart);
+          blockDate.setDate(blockDate.getDate() + dayOffset);
+          
+          const [startTime, endTime] = template.time.split('-');
+
+          blocks.push({
+            id: `block-${weekOffset}-${index}`,
+            title: template.title,
+            startTime,
+            endTime,
+            date: blockDate.toISOString().split('T')[0],
+            type: template.type as 'blocked' | 'vacation' | 'personal',
+            reason: template.reason
+          });
+        }
+      });
+    }
+
+    return blocks;
+  }
+
+  // ✅ DATOS FIJOS GARANTIZADOS
+  const today = new Date();
+  const monday = getStartOfWeek(today);
+  const tuesday = new Date(monday); tuesday.setDate(tuesday.getDate() + 1);
+  const wednesday = new Date(monday); wednesday.setDate(wednesday.getDate() + 2);
+  const thursday = new Date(monday); thursday.setDate(thursday.getDate() + 3);
+  const friday = new Date(monday); friday.setDate(friday.getDate() + 4);
+
+  const fixedAppointments: Appointment[] = [
+    {
+      id: 'fixed-1',
+      clientName: 'María García López',
+      service: 'Terapia individual',
+      startTime: '09:00',
+      endTime: '09:50',
+      date: monday.toISOString().split('T')[0],
+      status: 'confirmed',
+      price: 60,
+      hasVideo: true
+    },
+    {
+      id: 'fixed-2',
+      clientName: 'Carlos Ruiz Martín',
+      service: 'Primera consulta',
+      startTime: '10:30',
+      endTime: '11:15',
+      date: monday.toISOString().split('T')[0],
+      status: 'confirmed',
+      price: 45,
+      hasVideo: true
+    },
+    {
+      id: 'fixed-3',
+      clientName: 'Ana Sánchez Pérez',
+      service: 'Terapia de pareja',
+      startTime: '16:00',
+      endTime: '17:00',
+      date: tuesday.toISOString().split('T')[0],
+      status: 'pending',
+      price: 75,
+      hasVideo: true
+    },
+    {
+      id: 'fixed-4',
+      clientName: 'Luis Fernández Gómez',
+      service: 'Seguimiento',
+      startTime: '11:00',
+      endTime: '11:30',
+      date: wednesday.toISOString().split('T')[0],
+      status: 'confirmed',
+      price: 50,
+      hasVideo: false
+    },
+    {
+      id: 'fixed-5',
+      clientName: 'Carmen Rodríguez Vila',
+      service: 'Terapia individual',
+      startTime: '15:30',
+      endTime: '16:20',
+      date: thursday.toISOString().split('T')[0],
+      status: 'confirmed',
+      price: 60,
+      hasVideo: true
+    },
+    {
+      id: 'fixed-6',
+      clientName: 'Miguel Torres Ruiz',
+      service: 'Sesión intensiva',
+      startTime: '09:30',
+      endTime: '11:00',
+      date: friday.toISOString().split('T')[0],
+      status: 'confirmed',
+      price: 90,
+      hasVideo: true
+    }
+  ];
+
+  const fixedBlocks: TimeBlock[] = [
+    {
+      id: 'block-1',
+      title: 'Almuerzo',
+      startTime: '13:00',
+      endTime: '14:00',
+      date: tuesday.toISOString().split('T')[0],
+      type: 'personal',
+      reason: 'Pausa para almorzar'
+    },
+    {
+      id: 'block-2',
+      title: 'Administración',
+      startTime: '18:00',
+      endTime: '19:00',
+      date: wednesday.toISOString().split('T')[0],
+      type: 'blocked',
+      reason: 'Tareas administrativas'
+    },
+    {
+      id: 'block-3',
+      title: 'Formación continua',
+      startTime: '12:00',
+      endTime: '13:00',
+      date: friday.toISOString().split('T')[0],
+      type: 'personal',
+      reason: 'Curso online de actualización'
+    }
+  ];
+
+// ✅ GENERAR DATOS ADICIONALES
+  const generatedAppointments = generateSmartAppointments();
+  const generatedBlocks = generateSmartBlocks();
+
+  // ✅ COMBINAR DATOS EN CONSTANTES FINALES
+  const initialAppointments = [...fixedAppointments, ...generatedAppointments];
+  const initialBlocks = [...fixedBlocks, ...generatedBlocks];
+
+  // ✅ ESTADOS REACTIVOS (DEFINIR PRIMERO)
+  let calendarAppointments = $state<Appointment[]>(initialAppointments);
+  let calendarBlocks = $state<TimeBlock[]>(initialBlocks);
+
+  // Estados de la página
   let activeTab = $state('schedule');
   let showBlockModal = $state(false);
-
-  // Estados para modales del calendario
   let showQuickBlockModal = $state(false);
   let blockModalData = $state({
     date: '',
     startTime: '',
     endTime: ''
   });
-
-  // Citas de ejemplo para el calendario
-  let calendarAppointments = $state<Appointment[]>([
-    {
-      id: '1',
-      clientName: 'María García',
-      service: 'Terapia individual',
-      startTime: '09:00',
-      endTime: '09:50',
-      date: '2025-01-29',
-      status: 'confirmed',
-      price: 60,
-      hasVideo: true
-    },
-    {
-      id: '2',
-      clientName: 'Carlos Ruiz',
-      service: 'Primera consulta',
-      startTime: '11:00',
-      endTime: '11:45',
-      date: '2025-01-29',
-      status: 'confirmed',
-      price: 45,
-      hasVideo: true
-    },
-    {
-      id: '3',
-      clientName: 'Ana Martín',
-      service: 'Seguimiento',
-      startTime: '15:30',
-      endTime: '16:00',
-      date: '2025-01-29',
-      status: 'pending',
-      price: 50,
-      hasVideo: false
-    },
-    {
-      id: '4',
-      clientName: 'Pareja López',
-      service: 'Terapia de pareja',
-      startTime: '17:00',
-      endTime: '18:00',
-      date: '2025-01-29',
-      status: 'confirmed',
-      price: 75,
-      hasVideo: true
-    },
-    {
-      id: '5',
-      clientName: 'Pedro Jiménez',
-      service: 'Terapia individual',
-      startTime: '10:00',
-      endTime: '10:50',
-      date: '2025-01-30',
-      status: 'completed',
-      price: 60,
-      hasVideo: false
-    },
-    {
-      id: '6',
-      clientName: 'Laura Fernández',
-      service: 'Primera consulta',
-      startTime: '16:00',
-      endTime: '16:45',
-      date: '2025-01-31',
-      status: 'pending',
-      price: 45,
-      hasVideo: true
-    }
-  ]);
-
-  // Bloqueos para el calendario
-  let calendarBlocks = $state<TimeBlock[]>([
-    {
-      id: '1',
-      title: 'Almuerzo',
-      startTime: '13:00',
-      endTime: '14:00',
-      date: '2025-01-29',
-      type: 'personal',
-      reason: 'Pausa para almorzar'
-    },
-    {
-      id: '2',
-      title: 'Tiempo personal',
-      startTime: '16:30',
-      endTime: '17:00',
-      date: '2025-01-30',
-      type: 'blocked',
-      reason: 'Descanso'
-    },
-    {
-      id: '3',
-      title: 'Formación',
-      startTime: '12:00',
-      endTime: '13:00',
-      date: '2025-01-31',
-      type: 'personal',
-      reason: 'Curso online'
-    }
-  ]);
 
   // Bloqueos especiales (para el tab de blocks)
   let specialBlocks = $state<Block[]>([
@@ -219,14 +370,14 @@
     sessionDuration: 50
   });
 
-  // Estadísticas computadas
+  // ✅ ESTADÍSTICAS COMPUTADAS (DESPUÉS DE DEFINIR TODOS LOS ESTADOS)
   let stats = $derived({
-    activeDays: 5, // Hardcodeado para simplicidad
-    totalWeeklyHours: 40, // Hardcodeado
+    activeDays: 5,
+    totalWeeklyHours: 40,
     upcomingBlocks: specialBlocks.filter(block => 
       new Date(block.startDate) >= new Date()
     ).length,
-    maxSlotsPerWeek: 32 // Hardcodeado
+    maxSlotsPerWeek: 32
   });
 
   // Navegación entre tabs
@@ -242,7 +393,6 @@
   }
 
   function handleSlotClick(date: string, time: string): void {
-    // Crear nueva cita
     alert(`Crear nueva cita para ${new Date(date).toLocaleDateString('es-ES')} a las ${time}`);
   }
 
@@ -280,20 +430,25 @@
   }
 
   function handleQuickSetup(): void {
-    // Configuración rápida: resetear bloqueos del calendario
-    calendarBlocks = [
-      {
-        id: 'lunch',
-        title: 'Almuerzo',
-        startTime: '13:00',
-        endTime: '14:00',
-        date: '2025-01-29',
-        type: 'personal',
-        reason: 'Pausa para almorzar'
-      }
-    ];
+    const newLunchBlock: TimeBlock = {
+      id: 'lunch-' + Date.now(),
+      title: 'Almuerzo',
+      startTime: '13:00',
+      endTime: '14:00',
+      date: new Date().toISOString().split('T')[0],
+      type: 'personal',
+      reason: 'Pausa para almorzar'
+    };
+    calendarBlocks = [...calendarBlocks, newLunchBlock];
     alert('Configuración rápida aplicada: Horario de almuerzo añadido');
   }
+
+  // ✅ DEBUG LOG
+  console.log('📅 Availability Page Debug:');
+  console.log('Total appointments:', calendarAppointments.length);
+  console.log('Total blocks:', calendarBlocks.length);
+  console.log('Fixed appointments for this week:', fixedAppointments.length);
+  console.log('Generated appointments:', generatedAppointments.length);
 </script>
 
 <svelte:head>
@@ -385,7 +540,7 @@
   <!-- Tab Content -->
   <div class="space-y-6">
     {#if activeTab === 'schedule'}
-      <!-- Calendario Semanal -->
+      <!-- ✅ USAR EL NUEVO COMPONENTE LIMPIO -->
       <WeekCalendar 
         appointments={calendarAppointments}
         blocks={calendarBlocks}
