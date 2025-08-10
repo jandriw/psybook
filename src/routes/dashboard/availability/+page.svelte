@@ -1,4 +1,5 @@
 <!-- svelte-ignore state_referenced_locally -->
+<!-- svelte-ignore state_referenced_locally -->
 <!--src/routes/dashboard/availability/+page.svelte-->
 <script lang="ts">
   import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
@@ -546,6 +547,7 @@
         blocks={calendarBlocks}
         onAppointmentClick={handleAppointmentClick}
         onSlotClick={handleSlotClick}
+        publicMode={false }
         onBlockSlot={handleBlockSlot}
       />
       

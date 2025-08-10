@@ -11,7 +11,8 @@
     Clock,
     User,
     Video,
-    Ban
+    Ban,
+    Lock
   } from 'lucide-svelte';
 
   interface Appointment {
@@ -39,12 +40,14 @@
   let { 
     appointments = [],
     blocks = [],
+    publicMode = true,  // ✅ NUEVA PROP
     onAppointmentClick = () => {},
     onSlotClick = () => {},
     onBlockSlot = () => {}
   }: {
     appointments?: Appointment[];
     blocks?: TimeBlock[];
+    publicMode?: boolean;  // ✅ MODO PÚBLICO
     onAppointmentClick?: (appointment: Appointment) => void;
     onSlotClick?: (date: string, time: string) => void;
     onBlockSlot?: (date: string, startTime: string, endTime: string) => void;
@@ -54,7 +57,7 @@
   let currentWeek = $state(getStartOfWeek(new Date()));
 
   // Configuración del calendario
-  const timeSlots = generateTimeSlots('08:00', '20:00', 30); // 8:00 a 20:00 cada 30 min
+  const timeSlots = generateTimeSlots('08:00', '20:00', 30);
   const daysOfWeek = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
   // Obtener los días de la semana actual
@@ -88,29 +91,18 @@
     })
   );
 
-  // ✅ DEBUG: Log para verificar que los datos están llegando
-  $effect(() => {
-    console.log('📅 Calendar Debug Info:');
-    console.log('Current week:', currentWeek.toISOString().split('T')[0]);
-    console.log('Total appointments passed:', appointments.length);
-    console.log('Week appointments:', weekAppointments.length);
-    console.log('Total blocks passed:', blocks.length);
-    console.log('Week blocks:', weekBlocks.length);
-    console.log('Week days:', weekDays.map(d => d.toISOString().split('T')[0]));
-    if (weekAppointments.length > 0) {
-      console.log('Sample appointment:', weekAppointments[0]);
-    }
-  });
-
-  // Funciones de navegación
+  // ✅ FUNCIONES DE NAVEGACIÓN CON RESTRICCIÓN PÚBLICA
   function getStartOfWeek(date: Date): Date {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Lunes como primer día
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   }
 
   function goToPreviousWeek(): void {
+    // ✅ En modo público, no permitir ir hacia atrás
+    if (publicMode) return;
+    
     const newWeek = new Date(currentWeek);
     newWeek.setDate(newWeek.getDate() - 7);
     currentWeek = newWeek;
@@ -123,7 +115,34 @@
   }
 
   function goToToday(): void {
-    currentWeek = getStartOfWeek(new Date());
+    // ✅ En modo público, solo permitir ir a hoy si es presente/futuro
+    const today = new Date();
+    if (publicMode) {
+      const currentWeekStart = getStartOfWeek(new Date());
+      currentWeek = currentWeekStart;
+    } else {
+      currentWeek = getStartOfWeek(today);
+    }
+  }
+
+  // ✅ VERIFICAR SI UNA FECHA ES PASADA (para modo público)
+  function isPastDate(date: Date): boolean {
+    if (!publicMode) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+    return compareDate < today;
+  }
+
+  // ✅ VERIFICAR SI UN SLOT ES PASADO (incluye hora)
+  function isPastSlot(date: Date, time: string): boolean {
+    if (!publicMode) return false;
+    const now = new Date();
+    const slotDateTime = new Date(date);
+    const [hours, minutes] = time.split(':').map(Number);
+    slotDateTime.setHours(hours, minutes, 0, 0);
+    return slotDateTime < now;
   }
 
   // Generar slots de tiempo
@@ -170,12 +189,37 @@
     ) || null;
   }
 
-  // Verificar si un slot está disponible
+  // ✅ VERIFICAR DISPONIBILIDAD (considerando modo público)
   function isSlotAvailable(date: Date, time: string): boolean {
+    // Si es modo público y el slot es pasado, no está disponible
+    if (publicMode && isPastSlot(date, time)) return false;
+    
+    // Si hay cita o bloqueo, no está disponible
     return !getAppointmentAt(date, time) && !getBlockAt(date, time);
   }
 
-  // Obtener color del appointment según status
+  // ✅ OBTENER ESTADO DEL SLOT (para modo público)
+  function getSlotStatus(date: Date, time: string): 'available' | 'occupied' | 'past' {
+    if (publicMode && isPastSlot(date, time)) return 'past';
+    
+    const hasAppointment = getAppointmentAt(date, time);
+    const hasBlock = getBlockAt(date, time);
+    
+    if (hasAppointment || hasBlock) return 'occupied';
+    return 'available';
+  }
+
+  // ✅ COLORES PARA MODO PÚBLICO
+  function getPublicSlotColor(status: 'available' | 'occupied' | 'past'): string {
+    const colors = {
+      available: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+      occupied: 'bg-gray-100 text-gray-600 border-gray-300',
+      past: 'bg-gray-50 text-gray-400 border-gray-200'
+    };
+    return colors[status];
+  }
+
+  // Colores originales (modo privado)
   function getAppointmentColor(status: string): string {
     const colors: Record<string, string> = {
       confirmed: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -186,7 +230,6 @@
     return colors[status] || colors.confirmed;
   }
 
-  // Obtener color del bloqueo según tipo
   function getBlockColor(type: string): string {
     const colors: Record<string, string> = {
       blocked: 'bg-gray-100 text-gray-800 border-gray-300',
@@ -196,31 +239,27 @@
     return colors[type] || colors.blocked;
   }
 
-  // Calcular duración de un appointment en slots
+  // Calcular duración
   function getAppointmentDuration(appointment: Appointment): number {
     const start = parseTime(appointment.startTime);
     const end = parseTime(appointment.endTime);
-    return Math.round((end - start) / (30 * 60000)); // 30 min slots
+    return Math.round((end - start) / (30 * 60000));
   }
 
-  // Calcular duración de un bloqueo en slots
   function getBlockDuration(block: TimeBlock): number {
     const start = parseTime(block.startTime);
     const end = parseTime(block.endTime);
-    return Math.round((end - start) / (30 * 60000)); // 30 min slots
+    return Math.round((end - start) / (30 * 60000));
   }
 
-  // Verificar si es el primer slot de un appointment
   function isAppointmentStart(appointment: Appointment, time: string): boolean {
     return appointment.startTime === time;
   }
 
-  // Verificar si es el primer slot de un bloqueo
   function isBlockStart(block: TimeBlock, time: string): boolean {
     return block.startTime === time;
   }
 
-  // Formatear fecha para mostrar
   function formatDate(date: Date): string {
     return date.toLocaleDateString('es-ES', { 
       day: 'numeric', 
@@ -228,31 +267,44 @@
     });
   }
 
-  // Verificar si es hoy
   function isToday(date: Date): boolean {
     const today = new Date();
     return date.toDateString() === today.toDateString();
   }
 
-  // Manejar click en slot
+  // ✅ MANEJAR CLICK EN SLOT (con lógica pública/privada)
   function handleSlotClick(date: Date, time: string): void {
-    const appointment = getAppointmentAt(date, time);
-    const block = getBlockAt(date, time);
+    const slotStatus = getSlotStatus(date, time);
     
-    if (appointment) {
-      onAppointmentClick(appointment);
-    } else if (block) {
-      // Mostrar info del bloqueo
-      alert(`Bloqueo: ${block.title}\n${block.reason || ''}`);
+    if (publicMode) {
+      // En modo público, solo permitir clicks en slots disponibles
+      if (slotStatus === 'available') {
+        const dateStr = date.toISOString().split('T')[0];
+        onSlotClick(dateStr, time); // Para reservar cita
+      } else if (slotStatus === 'occupied') {
+        // No hacer nada o mostrar mensaje de "no disponible"
+        return;
+      }
     } else {
-      // Slot libre - permitir crear cita o bloquear
-      const dateStr = date.toISOString().split('T')[0];
-      onSlotClick(dateStr, time);
+      // Modo privado (original)
+      const appointment = getAppointmentAt(date, time);
+      const block = getBlockAt(date, time);
+      
+      if (appointment) {
+        onAppointmentClick(appointment);
+      } else if (block) {
+        alert(`Bloqueo: ${block.title}\n${block.reason || ''}`);
+      } else {
+        const dateStr = date.toISOString().split('T')[0];
+        onSlotClick(dateStr, time);
+      }
     }
   }
 
-  // Crear bloqueo rápido
   function handleQuickBlock(date: Date, time: string): void {
+    // Solo en modo privado
+    if (publicMode) return;
+    
     const dateStr = date.toISOString().split('T')[0];
     const endTime = formatTime(new Date(parseTime(time) + 30 * 60000));
     onBlockSlot(dateStr, time, endTime);
@@ -264,17 +316,23 @@
     <div class="flex items-center justify-between">
       <CardTitle class="flex items-center gap-2 text-2xl">
         <Calendar class="h-5 w-5" />
-        Calendario Semanal
+        {#if publicMode}
+          Disponibilidad
+        {:else}
+          Calendario Semanal
+        {/if}
       </CardTitle>
       
-      <!-- Navegación de semanas -->
+      <!-- ✅ NAVEGACIÓN CON RESTRICCIONES PÚBLICAS -->
       <div class="flex items-center space-x-2">
-        <Button variant="outline" size="sm" onclick={goToPreviousWeek}>
-          <ChevronLeft class="h-4 w-4" />
-        </Button>
+        {#if !publicMode}
+          <Button variant="outline" size="sm" onclick={goToPreviousWeek}>
+            <ChevronLeft class="h-4 w-4" />
+          </Button>
+        {/if}
         
         <Button variant="outline" size="sm" onclick={goToToday}>
-          Hoy
+          {publicMode ? 'Esta semana' : 'Hoy'}
         </Button>
         
         <Button variant="outline" size="sm" onclick={goToNextWeek}>
@@ -290,15 +348,21 @@
   </CardHeader>
   
   <CardContent class="p-4">
-    <!-- ✅ ESTRUCTURA SIMPLE QUE FUNCIONA (basada en CalendarDebugSimple) -->
-    
     <!-- Header de días -->
     <div class="grid grid-cols-8 gap-1 mb-4">
       <div class="p-2 text-xs font-medium text-gray-600 bg-gray-50">Hora</div>
       {#each weekDays as day, index}
-        <div class="p-2 text-xs font-medium text-center {isToday(day) ? 'bg-blue-50' : 'bg-gray-50'}">
+        <div class="p-2 text-xs font-medium text-center {
+          isToday(day) ? 'bg-blue-50' : 
+          publicMode && isPastDate(day) ? 'bg-gray-50' : 
+          'bg-gray-50'
+        }">
           <div>{daysOfWeek[index]}</div>
-          <div class="font-semibold {isToday(day) ? 'text-blue-600' : 'text-gray-900'}">
+          <div class="font-semibold {
+            isToday(day) ? 'text-blue-600' : 
+            publicMode && isPastDate(day) ? 'text-gray-400' : 
+            'text-gray-900'
+          }">
             {formatDate(day)}
           </div>
         </div>
@@ -319,54 +383,74 @@
             {#each weekDays as day}
               {@const appointment = getAppointmentAt(day, time)}
               {@const block = getBlockAt(day, time)}
-              {@const isAvailable = isSlotAvailable(day, time)}
+              {@const slotStatus = getSlotStatus(day, time)}
               
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div 
-                class="p-1 min-h-12 border-r border-gray-200 relative cursor-pointer hover:bg-gray-50 {isToday(day) ? 'bg-blue-25' : ''}"
+                class="p-1 min-h-12 border-r border-gray-200 relative transition-colors {
+                  publicMode ? 
+                    (slotStatus === 'available' ? 'cursor-pointer hover:bg-green-50' : 'cursor-not-allowed') :
+                    'cursor-pointer hover:bg-gray-50'
+                } {isToday(day) && !publicMode ? 'bg-blue-25' : ''}"
                 onclick={() => handleSlotClick(day, time)}
                 oncontextmenu={(e) => {
                   e.preventDefault();
-                  if (isAvailable) handleQuickBlock(day, time);
+                  if (!publicMode && slotStatus === 'available') handleQuickBlock(day, time);
                 }}
               >
-                {#if appointment && isAppointmentStart(appointment, time)}
-                  <!-- Appointment Card -->
-                  <div 
-                    class="absolute inset-1 {getAppointmentColor(appointment.status)} rounded p-1 text-xs border z-10"
-                    style="height: {getAppointmentDuration(appointment) * 3}rem;"
-                  >
-                    <div class="font-medium truncate">{appointment.clientName}</div>
-                    <div class="text-xs opacity-75 truncate">{appointment.service}</div>
-                    <div class="flex items-center justify-between mt-1">
-                      <span class="text-xs">{appointment.price}€</span>
-                      {#if appointment.hasVideo}
-                        <Video class="h-3 w-3" />
+                {#if publicMode}
+                  <!-- ✅ MODO PÚBLICO: Mostrar solo estado de disponibilidad -->
+                  {#if (appointment && isAppointmentStart(appointment, time)) || (block && isBlockStart(block, time))}
+                    <div class="absolute inset-1 {getPublicSlotColor('occupied')} rounded p-1 text-xs border flex items-center justify-center">
+                      <Lock class="h-3 w-3 mr-1" />
+                      <span class="text-xs">Ocupado</span>
+                    </div>
+                  {:else if slotStatus === 'available'}
+                    <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <Plus class="h-3 w-3 text-green-600" />
+                    </div>
+                  {:else if slotStatus === 'past'}
+                    <div class="w-full h-full flex items-center justify-center">
+                      <span class="text-xs text-gray-400">—</span>
+                    </div>
+                  {/if}
+                {:else}
+                  <!-- ✅ MODO PRIVADO: Mostrar información completa (original) -->
+                  {#if appointment && isAppointmentStart(appointment, time)}
+                    <div 
+                      class="absolute inset-1 {getAppointmentColor(appointment.status)} rounded p-1 text-xs border z-10"
+                      style="height: {getAppointmentDuration(appointment) * 3}rem;"
+                    >
+                      <div class="font-medium truncate">{appointment.clientName}</div>
+                      <div class="text-xs opacity-75 truncate">{appointment.service}</div>
+                      <div class="flex items-center justify-between mt-1">
+                        <span class="text-xs">{appointment.price}€</span>
+                        {#if appointment.hasVideo}
+                          <Video class="h-3 w-3" />
+                        {/if}
+                      </div>
+                    </div>
+                    
+                  {:else if block && isBlockStart(block, time)}
+                    <div 
+                      class="absolute inset-1 {getBlockColor(block.type)} rounded p-1 text-xs border z-10"
+                      style="height: {getBlockDuration(block) * 3}rem;"
+                    >
+                      <div class="font-medium truncate flex items-center">
+                        <Ban class="h-3 w-3 mr-1" />
+                        {block.title}
+                      </div>
+                      {#if block.reason}
+                        <div class="text-xs opacity-75 truncate">{block.reason}</div>
                       {/if}
                     </div>
-                  </div>
-                  
-                {:else if block && isBlockStart(block, time)}
-                  <!-- Block Card -->
-                  <div 
-                    class="absolute inset-1 {getBlockColor(block.type)} rounded p-1 text-xs border z-10"
-                    style="height: {getBlockDuration(block) * 3}rem;"
-                  >
-                    <div class="font-medium truncate flex items-center">
-                      <Ban class="h-3 w-3 mr-1" />
-                      {block.title}
+                    
+                  {:else if slotStatus === 'available'}
+                    <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <Plus class="h-3 w-3 text-gray-400" />
                     </div>
-                    {#if block.reason}
-                      <div class="text-xs opacity-75 truncate">{block.reason}</div>
-                    {/if}
-                  </div>
-                  
-                {:else if isAvailable}
-                  <!-- Slot libre -->
-                  <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                    <Plus class="h-3 w-3 text-gray-400" />
-                  </div>
+                  {/if}
                 {/if}
               </div>
             {/each}
@@ -377,31 +461,53 @@
   </CardContent>
 </Card>
 
-<!-- Leyenda -->
-<div class="mt-4 flex flex-wrap gap-4 text-xs">
-  <div class="flex items-center space-x-2">
-    <div class="w-3 h-3 bg-blue-100 border border-blue-200 rounded"></div>
-    <span>Confirmada</span>
+<!-- ✅ LEYENDA ADAPTADA AL MODO -->
+{#if publicMode}
+  <!-- Leyenda modo público -->
+  <div class="mt-4 flex flex-wrap gap-4 text-xs">
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-green-50 border border-green-200 rounded"></div>
+      <span>Disponible</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
+      <span>Ocupado</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-gray-50 border border-gray-200 rounded"></div>
+      <span>No disponible</span>
+    </div>
   </div>
-  <div class="flex items-center space-x-2">
-    <div class="w-3 h-3 bg-yellow-100 border border-yellow-200 rounded"></div>
-    <span>Pendiente</span>
+  
+  <div class="mt-2 text-xs text-gray-500">
+    Haz click en un horario disponible para reservar tu sesión
   </div>
-  <div class="flex items-center space-x-2">
-    <div class="w-3 h-3 bg-green-100 border border-green-200 rounded"></div>
-    <span>Completada</span>
+{:else}
+  <!-- Leyenda modo privado (original) -->
+  <div class="mt-4 flex flex-wrap gap-4 text-xs">
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-blue-100 border border-blue-200 rounded"></div>
+      <span>Confirmada</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-yellow-100 border border-yellow-200 rounded"></div>
+      <span>Pendiente</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-green-100 border border-green-200 rounded"></div>
+      <span>Completada</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
+      <span>Bloqueado</span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <div class="w-3 h-3 bg-purple-100 border border-purple-200 rounded"></div>
+      <span>Vacaciones</span>
+    </div>
   </div>
-  <div class="flex items-center space-x-2">
-    <div class="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
-    <span>Bloqueado</span>
-  </div>
-  <div class="flex items-center space-x-2">
-    <div class="w-3 h-3 bg-purple-100 border border-purple-200 rounded"></div>
-    <span>Vacaciones</span>
-  </div>
-</div>
 
-<!-- Instrucciones -->
-<div class="mt-2 text-xs text-gray-500">
-  Click izquierdo: Ver/Crear cita • Click derecho: Bloquear slot • Navega entre semanas con las flechas
-</div>
+  <div class="mt-2 text-xs text-gray-500">
+    Click izquierdo: Ver/Crear cita • Click derecho: Bloquear slot • Navega entre semanas con las flechas
+  </div>
+{/if}
